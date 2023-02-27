@@ -1,0 +1,35 @@
+train_params:
+  lr: 0.005
+  weight_decay: 0.00001
+  scheduler_gamma: 0.95
+  gpus: [0]
+  epochs: 50
+log:
+  log_dir: "logs"
+  new_log: True
+
+data_params:
+  data_dir: "../data/Data-V2"
+  train_batch_size: 128
+  val_batch_size: 128
+  img_size: 224
+  num_workers: 6
+  if_check: False
+test_params:
+  input_dir: "./demo/input"
+  output_dir: "./demo/output"
+  categories:
+    0: "cat"
+    1: "cow"
+    2: "dog"
+    3: "elephant"
+    4: "gorilla"
+    5: "hippo"
+    6: "monkey"
+    7: "panda"
+    8: "tiger"
+    9: "zebra"
+model_params:
+  layers_num: 50
+  pretrained: True
+  classes_num: 10
