@@ -9,7 +9,7 @@ log:
   new_log: True
 
 data_params:
-  data_dir: "../data/Data-V2"
+  data_dir: "./data/Data-V2"
   train_batch_size: 128
   val_batch_size: 128
   img_size: 224
