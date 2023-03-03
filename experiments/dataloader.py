@@ -33,7 +33,7 @@ class MyDataset():
                                                     torchvision.transforms.ToTensor(),
                                                     torchvision.transforms.Normalize([0.485, 0.456, 0.406],
                                                                                      [0.229, 0.224, 0.225])])
-        dataset=torchvision.datasets.ImageFolder(path,transform)
+        dataset=torchvision.datasets.ImageFolder(root=path,transform=transform)
         dataloader = data.DataLoader(dataset=dataset, batch_size=self.train_batch_size, shuffle=True,
                                           num_workers=self.num_workers)
         return dataloader
@@ -45,7 +45,7 @@ class MyDataset():
                                             torchvision.transforms.Normalize([0.485, 0.456, 0.406],
                                                                              [0.229, 0.224, 0.225])
                                             ])
-        dataset=torchvision.datasets.ImageFolder(path,transform)
+        dataset=torchvision.datasets.ImageFolder(root=path,transform=transform)
         dataloader = data.DataLoader(dataset=dataset, batch_size=self.val_batch_size, shuffle=False,
                                      num_workers=self.num_workers)
         return dataloader

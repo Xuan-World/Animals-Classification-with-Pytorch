@@ -3,6 +3,7 @@
 所有图片读取错误，再删除
 '''
 import os
+import time
 
 import warnings
 
@@ -22,6 +23,8 @@ class checkErrorImgs():
     def check(self):
         errorImgs=[]
         for parent, dirs, files in os.walk(self.base_dir):#(root,dirs,files)
+            print("\nparent\t",parent,"\ndirs\t",dirs,"\nfiles\t",files,"\n")
+            time.sleep(1)
             for file in files:
                 if not self.is_read_successfully(os.path.join(parent, file)):
                     errorImgs.append(os.path.join(parent, file))
@@ -31,3 +34,5 @@ class checkErrorImgs():
         errorImgs=self.check()
         for i in errorImgs:
             os.remove(i) #真正使用时，这一行要放开，自己一般习惯先跑一遍，没有错误了再删除，防止删错。
+
+checkErrorImgs("../../data/Data-V2").check()

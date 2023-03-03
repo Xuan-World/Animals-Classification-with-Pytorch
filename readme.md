@@ -19,9 +19,9 @@
     - train.py：训练模型
   - models：神经网络模型
     - resnet.py：一个基于resnet的fine-tuning的网络，输出10个种类判别
-  - demo.py：对demo文件夹操作，加载训练好的model_static_dict.pth模型，并进行图片分类测试
+  - **demo.py**：对demo文件夹操作，加载训练好的model_static_dict.pth模型，并进行图片分类测试
   - model_static_dict.pth：保存下来的训练好的模型。已经在服务器上对模型训练了50个epoch，精度达到98.9%
-  - run.py：用于训练网络
+  - **run.py**：用于训练网络
   - logs：日志文件，可以看到之前的训练过程记录
   - data（数据集存放文件夹，自己建立）
     - Data-V2（数据集，解压后得到，下载地址：[Animals - V2 | Image Classification Dataset | | Kaggle](https://www.kaggle.com/datasets/utkarshsaxenadn/animal-image-classification-dataset?resource=download-directory&select=Animal-Data-V2)
@@ -41,7 +41,7 @@
 
 *注意：数据集选择Data-V2版本*![数据集下载界面](.\数据集下载界面.jpg)
 
-## 代码解析
+## 代码解析 
 
 **run.py**
 
@@ -96,7 +96,7 @@
   <img src="./readme.assets/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L3FxXzQ0OTA3OTI2,size_16,color_FFFFFF,t_70.png" alt="在这里插入图片描述" style="zoom:67%;" />
 
   ```python
-  logger = logging.getLogger()#创建logger对象
+  logger = logging.getLogger()# 创建logger对象
   logger.setLevel(logging.INFO)  # 设置打印级别，可以在logger处设置，也可以在handler层级设置。级别：DEBUG<INFO<WARNING<ERROR<CRITICAL
   
   formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')#创建格式对象，后续传参给Handler
@@ -138,4 +138,113 @@
   torch.save(model.state_dict(),"model_static_dict.pth")
   ```
 
-  
+
+**models/resnet.py：**
+
+- 导包
+
+  ```python
+  from torch import nn
+  import torchvision
+  from torchsummary import summary
+  ```
+
+- 定义网络，fine-tune一个torchvision.models.resnet，模型输出维度为类型个数，预训练模型参数梯度![image-20230303154039974](./readme.assets/image-20230303154039974.png)
+
+**experiments/check_error.py**
+
+通过遍历数据集来检测并删除错误的数据（有可能看起来是正常的图片，但是读到网络里就会有异常抛出）
+
+- 导包
+
+  ```python
+  import os
+  import warnings
+  from PIL import Image
+  ```
+
+- 思想：os.walk遍历整个数据集，如果打开图片错误，就记录他并返回
+
+  os.walk 的返回值是一个生成器(generator)
+
+  --root 指的是当前正在遍历的这个文件夹的本身的地址
+
+  --dirs 返回的是一个列表list，是该文件夹中所有的目录的名称(但不包括子目录名称) 
+
+  --files 返回的也是一个列表list , 是该文件夹中所有的文件名称(但不包括子目录名称)
+
+  forloop循环会树状逐个遍历文件夹，最终扫过全部的图片，并将每张图片都送入is_read_successfully()
+
+  ```python
+      def check(self):
+          errorImgs=[]
+          for parent, dirs, files in os.walk(self.base_dir):#(root,dirs,files)
+              for file in files:
+                  if not self.is_read_successfully(os.path.join(parent, file)):
+                      errorImgs.append(os.path.join(parent, file))
+                      print(os.path.join(parent, file))
+          return errorImgs
+      def is_read_successfully(self,file):
+          try:
+              imgFile = Image.open(file)  # 这个就是一个简单的打开成功与否
+              return True
+          except Exception:
+              return False    
+  ```
+
+  ![image-20230303160408450](./readme.assets/image-20230303160408450.png)
+
+- 删除错误图片
+
+  ```python
+      def doDelete(self):
+          errorImgs=self.check()
+          for i in errorImgs:
+              os.remove(i) #真正使用时，这一行要放开，自己一般习惯先跑一遍，没有错误了再删除，防止删错。
+  ```
+
+**experiments/dataloader.py**
+
+1. 初始化类，形参**kwargs会接受key-value参数并合并为dict
+
+   ```python
+       def __init__(self,**kwargs):
+           self.lr=kwargs['lr']
+           self.wd=kwargs['weight_decay']
+           self.gamma=kwargs['scheduler_gamma']
+           self.gpus=[torch.device(i) for i in kwargs['gpus']]
+           self.epochs=kwargs['epochs']
+   ```
+
+   
+
+2. 仅用加载train数据的函数作为例子。由于DataV2数据集符合ImageFolder规定的数据集的组织结构
+
+- *root*/dog/xxx.png
+
+- *root*/dog/xxy.png
+
+- *root*/dog/xxz.png
+
+  所以可以如下加载数据集。并且对图片做了一系列的增广操作，来扩充数据集。
+
+```python
+def train_dataloader(self):
+    path = os.path.join(self.data_dir, "Training Data")
+    transform = torchvision.transforms.Compose([torchvision.transforms.Resize(256),
+                                                torchvision.transforms.CenterCrop(224),
+                                                torchvision.transforms.RandomHorizontalFlip(),
+                                                torchvision.transforms.ColorJitter(brightness=0.2, contrast=0.2,
+                                                                                   saturation=0.2),
+                                                torchvision.transforms.ToTensor(),
+                                                torchvision.transforms.Normalize([0.485, 0.456, 0.406],
+                                                                                 [0.229, 0.224, 0.225])])
+    dataset=torchvision.datasets.ImageFolder(root=path,transform=transform)
+    dataloader = data.DataLoader(dataset=dataset, batch_size=self.train_batch_size, shuffle=True,
+                                      num_workers=self.num_workers)
+    return dataloader
+```
+
+**experiments/train.py**
+
+训练网络

@@ -1,8 +1,7 @@
 import torch
 from torch import nn
 import torchvision
-from torch.utils import data
-
+from torchsummary import summary
 
 class Resnet(nn.Module):
     def __init__(self, layers_num, pretrained, classes_num):
@@ -25,7 +24,10 @@ class Resnet(nn.Module):
         for layer in self.net.outputLayer:
             if type(layer) ==nn.Linear:
                 nn.init.xavier_uniform_(layer.weight)
-        print(self.net)
+
 
     def forward(self, X):
         return self.net(X)
+
+net=Resnet(18,True,10).to("cuda")
+summary(net,(3,224,224))

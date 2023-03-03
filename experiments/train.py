@@ -1,6 +1,5 @@
 import torch
 from torch import  nn
-import d2l
 import time
 class Train():
     def __init__(self,**kwargs):
