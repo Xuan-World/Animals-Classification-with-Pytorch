@@ -18,6 +18,7 @@ parser.add_argument('--config', '-c',
 args = parser.parse_args()
 with open(args.filename, 'r') as file:
     configfile = yaml.safe_load(file)
+print()
 print(configfile)
 # 建模型
 model = models.resnet.Resnet(**configfile['model_params'])
