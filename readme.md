@@ -43,7 +43,7 @@
 
 ## 代码解析 
 
-**run.py**
+### run.py
 
 在run.py文件中，重点负责：
 
@@ -138,8 +138,7 @@
   torch.save(model.state_dict(),"model_static_dict.pth")
   ```
 
-
-**models/resnet.py：**
+### models/resnet.py：
 
 - 导包
 
@@ -151,7 +150,7 @@
 
 - 定义网络，fine-tune一个torchvision.models.resnet，模型输出维度为类型个数，预训练模型参数梯度![image-20230303154039974](./readme.assets/image-20230303154039974.png)
 
-**experiments/check_error.py**
+### experiments/check_error.py
 
 通过遍历数据集来检测并删除错误的数据（有可能看起来是正常的图片，但是读到网络里就会有异常抛出）
 
@@ -203,17 +202,27 @@
               os.remove(i) #真正使用时，这一行要放开，自己一般习惯先跑一遍，没有错误了再删除，防止删错。
   ```
 
-**experiments/dataloader.py**
+### experiments/dataloader.py
 
-1. 初始化类，形参**kwargs会接受key-value参数并合并为dict
+1. 初始化类，形参*args和**kwargs会接受多余的参数。并且检查图片文件。
 
    ```python
-       def __init__(self,**kwargs):
-           self.lr=kwargs['lr']
-           self.wd=kwargs['weight_decay']
-           self.gamma=kwargs['scheduler_gamma']
-           self.gpus=[torch.device(i) for i in kwargs['gpus']]
-           self.epochs=kwargs['epochs']
+       def __init__(self,data_dir,train_batch_size,val_batch_size,num_workers,if_check,*args,**kwargs):
+           self.data_dir=data_dir
+           self.train_batch_size=train_batch_size
+           self.val_batch_size=val_batch_size
+           self.test_batch_size=val_batch_size
+           self.num_workers=num_workers
+           if if_check:
+               print("checking all images")
+               checker=checkErrorImgs(os.path.join(self.data_dir, "Training Data"))
+               checker.doDelete()
+               checker = checkErrorImgs(os.path.join(self.data_dir, "Validation Data"))
+               checker.doDelete()
+               checker = checkErrorImgs(os.path.join(self.data_dir, "Testing Data"))
+               checker.doDelete()
+           else:
+               print("skip the check of all images")
    ```
 
    
@@ -245,6 +254,179 @@ def train_dataloader(self):
     return dataloader
 ```
 
-**experiments/train.py**
+### experiments/train.py
 
-训练网络
+1. 导包
+
+   ```python
+   import torch
+   from torch import  nn
+   from draw import drawPlot
+   import time
+   ```
+
+2. 初始化训练器的参数
+
+   ```python
+       def __init__(self,**kwargs):
+           self.lr=kwargs['lr']#学习率
+           self.wd=kwargs['weight_decay']#权重衰减——定义正则项的系数
+           self.gamma=kwargs['scheduler_gamma']#lr会随着训练epoch的迭代而变小。scheduler可以管理lr的衰减。gamma为衰减率。
+           self.gpus=[torch.device("cuda",i) for i in kwargs['gpus']]#'gpus':[0]
+           self.epochs=kwargs['epochs']#epoch的个数
+   ```
+
+3. 定义准确率函数，用于展示运行中模型的准确率来打log。返回正确判别的个数。
+
+   $y: Tensor(bs,numClasses); y_{hat}: Tensor(bs)$
+
+   ```python
+       def model_acc(self,y,y_hat):
+           return (y_hat.argmax(axis=1)==y).float().sum()
+   ```
+
+4. 评估模型，用于在训练一整个epoch后，利用valid数据集进行评估模型效果。更新valid_acc中的数据。
+
+   ```python
+       def evaluate(self,net,valid_dataloader,valid_acc,device):
+           with torch.no_grad():#取消梯度计算
+               for X,y in valid_dataloader:
+                   X=X.to(device)
+                   y=y.to(device)
+                   y_hat=net(X)
+                   valid_acc[0]+=self.model_acc(y,y_hat)#batch中判别正确的个数
+                   valid_acc[1]+=y.numel()#batch中的数据个数
+               return valid_acc
+   ```
+
+5. 定义训练函数
+
+   **L2 Penalty权重衰减（所谓权重衰减，就是对参数中的weight值的取值范围进行过大惩罚机制）：**$Loss=CrossEntropyLoss+\frac{self.wd}{2}\cdot \Sigma \;[net.parameters()^2]$ .在pytorch的optim优化器中，可以传入权重衰减的权重，配置文件里给到了0.00001，可见，虽然进行权重衰减，但是不宜太过。在SGD中，会把参数$net.parameters()$传进来，所以在这一步做权重衰减很好。背后底层代码将反向传播权重penalty部分的梯度并叠加到$net.parameters().data.grad$上。随后做随机梯度下降$net.parameters()=net.parameters()-lr\cdot gradient$即可。
+
+   **lr_scheduler对lr进行运行时调整：**每个epoch进行：$lr=lr\cdot gamma$ 配置文件中,gamma=0.95
+
+   **请仔细阅读训练函数，一般都是模板定式**
+
+   ![](./readme.assets/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L20wXzM3NjQ0MDg1,size_16,color_FFFFFF,t_70.png)
+
+   ```python
+       def train(self,net,train_dataloader,valid_dataloader,logger):
+           loss=nn.CrossEntropyLoss(reduction='none')#交叉熵损失，返回loss:Tensor(bs)，没有求mean。
+           optim=torch.optim.SGD(net.parameters(),lr=self.lr,weight_decay=self.wd)#优化器：net.parameters()=net.parameters()-lr*gradient
+           scheduler=torch.optim.lr_scheduler.ExponentialLR(optim,gamma=self.gamma)#对lr进行运行时调整
+           device=self.gpus[0]
+           net=net.to(device)
+           train_acc_list=[]#为了最终画图用，所以要存下变化情况
+           train_loss_list=[]
+           valid_acc_list=[]
+           for epoch in range(self.epochs):
+               net.train()#注意此语句位置
+               train_acc=[0.0]*2
+               train_loss=[0.0]*2
+               valid_acc=[0.0]*2
+               total_time=0
+               for X,y in train_dataloader:
+                   start_time=time.time()
+                   X=X.to(device)
+                   y=y.to(device)
+                   y_hat=net(X)
+                   l=loss(y_hat,y).sum()
+                   optim.zero_grad()
+                   l.backward()
+                   optim.step()
+                   with torch.no_grad():
+                       train_acc[0]+=self.model_acc(y,y_hat)
+                       train_acc[1]+=y.numel()
+                       train_loss[0]+=l
+                       train_loss[1]+=y.numel()
+                   total_time += time.time()-start_time
+   
+               net.eval()
+               valid_acc=self.evaluate(net,valid_dataloader,valid_acc,device)
+               logger.info(f"epoch{epoch}:train_loss:{train_loss[0]/train_loss[1]:.4f},"
+                     f"train_acc:{train_acc[0]}/{train_acc[1]}={train_acc[0]/train_acc[1]:.4f},valid_acc:{valid_acc[0]}/{valid_acc[1]}={valid_acc[0]/valid_acc[1]:.4f},speed={train_loss[1]/total_time:.1f}items/sec")
+               train_loss_list.append(train_loss[0]/train_loss[1])
+               train_acc_list.append(train_acc[0]/train_acc[1])
+               valid_acc_list.append(valid_acc[0]/valid_acc[1])
+               scheduler.step()
+           drawPlot(train_loss_list,self.epochs,"epochs","train_loss","训练集上损失的迭代变化")
+           drawPlot(train_acc_list,self.epochs,"epochs","train_acc","训练集上精度的迭代变化")
+           drawPlot(valid_acc_list,self.epochs,"epochs","valid_acc","测试集上精度的迭代变化")
+   
+   ```
+
+### experiments/draw.py：
+
+```python
+from matplotlib import pyplot as plt
+from matplotlib.font_manager import FontProperties
+font_set=FontProperties(fname=r"c:\windows\fonts\simsun.ttc", size=15)#定义字体和大小，返回保存这个设置的一个“设置对象”
+def drawPlot(list,epoch,xlabel,ylabel,title):
+    plt.figure()
+    x1=range(1,epoch+1)
+    y1=list
+    plt.cla()#plt.cla() 表示清除当前轴
+    plt.title(title, fontproperties=font_set)
+    plt.plot(x1,y1,'.-')
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.grid()
+    plt.savefig(f"./{ylabel}-{xlabel}.png")
+    plt.show()
+```
+
+### demo.py
+
+加载已经训练好的模型参数，并调用test来测试图片分类结果。随机给照片，让其分类,把照片放入demo/input中，我们从demo/output/result.csv中输出对应照片的分类结果
+
+```python
+model=resnet.Resnet(**configfile['model_params'])
+model.load_state_dict(torch.load('model_static_dict.pth'))
+test.test(model,**configfile['test_params'])
+```
+
+### /experiments/test.py
+
+1. 把图片名称读入images[]
+
+   ```python
+   def test(net,input_dir,output_dir,categories):
+       net.eval()
+       images = []
+       for item in os.listdir(input_dir):
+           images.append(item)
+       print(images)    
+   ```
+
+2. 读取图片并经过transform
+
+   ```python
+       transform = torchvision.transforms.Compose([torchvision.transforms.Resize(256),
+                                                   torchvision.transforms.CenterCrop(224),
+                                                   torchvision.transforms.ToTensor(),
+                                                   torchvision.transforms.Normalize([0.485, 0.456, 0.406],
+                                                                                    [0.229, 0.224, 0.225])
+                                                   ])
+       features=[transform( Image.open(os.path.join(input_dir,i)) ) for i in images]
+   ```
+
+3. 图片依次经过net得到分类结果，并依次存入labels：["cat","cat","dog"...]
+
+   ```python
+       labels=[]
+       for i in features:
+           idx=int(net(i.unsqueeze(0)).argmax(axis=1))
+           labels.append(categories[idx])
+   ```
+
+4. 一行一行['filename','category']依次写入csv文件
+
+   ```python
+       with open(os.path.join(output_dir,"result.csv"),'w') as f:
+           csv_writter=csv.writer(f)
+           csv_head=['filename','category']
+           csv_writter.writerow(csv_head)
+           for i in range(len(labels)):
+               csv_writter.writerow([images[i],labels[i]])
+   ```
+

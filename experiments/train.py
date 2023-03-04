@@ -1,13 +1,14 @@
 import torch
 from torch import  nn
+from draw import drawPlot
 import time
 class Train():
     def __init__(self,**kwargs):
-        self.lr=kwargs['lr']
-        self.wd=kwargs['weight_decay']
-        self.gamma=kwargs['scheduler_gamma']
-        self.gpus=[torch.device(i) for i in kwargs['gpus']]
-        self.epochs=kwargs['epochs']
+        self.lr=kwargs['lr']#学习率
+        self.wd=kwargs['weight_decay']#权重衰减——定义正则项的系数
+        self.gamma=kwargs['scheduler_gamma']#lr会随着训练epoch的迭代而变小。scheduler可以管理lr的衰减。gamma为衰减率。
+        self.gpus=[torch.device("cuda",i) for i in kwargs['gpus']]#'gpus':[0]
+        self.epochs=kwargs['epochs']#epoch的个数
 
 
     def model_acc(self,y,y_hat):
@@ -18,17 +19,18 @@ class Train():
                 X=X.to(device)
                 y=y.to(device)
                 y_hat=net(X)
-                valid_acc[0]+=self.model_acc(y,y_hat)
-                valid_acc[1]+=y.numel()
+                valid_acc[0]+=self.model_acc(y,y_hat)#batch中判别正确的个数
+                valid_acc[1]+=y.numel()#batch中的数据个数
             return valid_acc
 
     def train(self,net,train_dataloader,valid_dataloader,logger):
         loss=nn.CrossEntropyLoss(reduction='none')
-        optim=torch.optim.SGD(net.parameters(),lr=self.lr,weight_decay=self.wd)
+        weight_optim=torch.optim.SGD(net.parameters().weight,lr=self.lr,weight_decay=self.wd)
+        bias_optim=torch.optim.SGD(net.parameters().bias,lr=self.lr)
         scheduler=torch.optim.lr_scheduler.ExponentialLR(optim,gamma=self.gamma)
         device=self.gpus[0]
         net=net.to(device)
-        train_acc_list=[]
+        train_acc_list=[]#为了最终画图用，所以要存下变化情况
         train_loss_list=[]
         valid_acc_list=[]
         for epoch in range(self.epochs):

@@ -1,4 +1,4 @@
-import matplotlib
+
 from matplotlib import pyplot as plt
 from matplotlib.font_manager import FontProperties
 font_set=FontProperties(fname=r"c:\windows\fonts\simsun.ttc", size=15)
@@ -6,7 +6,7 @@ def drawPlot(list,epoch,xlabel,ylabel,title):
     plt.figure()
     x1=range(1,epoch+1)
     y1=list
-    plt.cla()
+    plt.cla()#plt.cla() 表示清除当前轴
     plt.title(title, fontproperties=font_set)
     plt.plot(x1,y1,'.-')
     plt.xlabel(xlabel)
