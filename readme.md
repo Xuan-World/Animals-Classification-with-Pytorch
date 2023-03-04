@@ -385,7 +385,7 @@ model.load_state_dict(torch.load('model_static_dict.pth'))
 test.test(model,**configfile['test_params'])
 ```
 
-### /experiments/test.py
+### experiments/test.py
 
 1. 把图片名称读入images[]
 
